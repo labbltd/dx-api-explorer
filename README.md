@@ -2,6 +2,10 @@
 
 This is a work in progress...
 
+## Installation
+
+Make sure you have the latest Microsoft Visual C++ redistributable installed: https://aka.ms/vs/17/release/vc_redist.x64.exe
+
 ## Client Registration Setup
 - Important stuff:
 	- Type of client: Confidential
