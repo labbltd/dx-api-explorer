@@ -10,8 +10,9 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{bde9d441-464a-4769-a2fe-97140a528906}</ProjectGuid>
-    <RootNamespace>DXAPIDIMGUI</RootNamespace>
+    <RootNamespace>dx_api_explorer</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>dx_api_explorer</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -31,7 +32,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(ProjectDir)lib\cpp-httplib;$(ProjectDir)lib\imgui;$(ProjectDir)lib\imgui\backends;$(ProjectDir)lib\imgui\misc\cpp;$(ProjectDir)lib\json\single_include;$(ProjectDir)lib\OpenSSL-3.3.1\include;$(ProjectDir)lib\SDL2-2.30.5\include;$(ProjectDir)lib;%(AdditionalIncludeDirectories)</IncludePath>
-    <LibraryPath>C:\Users\bessp\source\repos\DXAPIDIMGUI\lib\OpenSSL-3.3.1\lib;C:\Users\bessp\source\repos\DXAPIDIMGUI\lib\SDL2-2.30.5\lib\x64;$(LibraryPath)</LibraryPath>
+    <LibraryPath>$(ProjectDir)lib\OpenSSL-3.3.1\lib;$(ProjectDir)lib\SDL2-2.30.5\lib\x64;$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)\build\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)\build\$(ShortProjectName)\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>

@@ -22,18 +22,30 @@ using json = nlohmann::json;
 
 namespace dx_api_explorer
 {
+namespace
+{
 
 #pragma region Constants:
 ///////////////////////////////////////////////////////////////////////////////
 
-constexpr auto config_file_name = "dx_api_explorer_config.json";
-constexpr auto json_indent = 2;
+    constexpr auto config_file_name = "dx_api_explorer_config.json";
+    constexpr auto json_indent = 2;
+    constexpr auto network_thread_period_ticks = std::chrono::milliseconds{ 25 };
+    constexpr auto spinner_period_ticks = std::chrono::milliseconds{ 15 };
+    constexpr std::array<std::pair<float, const char*>, 6> font_sizes =
+    { 
+        std::make_pair(10.0f, "10"), 
+        std::make_pair(20.0f, "20"),
+        std::make_pair(30.0f, "30"),
+        std::make_pair(40.0f, "40"),
+        std::make_pair(50.0f, "50"),
+        std::make_pair(60.0f, "60")
+    };
+    constexpr auto font_file_name = "Cousine-Regular.ttf";
+    constexpr auto hidpi_pixel_width_threshold = 900; // Screen width divided by this gives us our default index into or font sizes array.
 
 ///////////////////////////////////////////////////////////////////////////////
 #pragma endregion
-
-namespace
-{
 
 #pragma region Helper data:
 ///////////////////////////////////////////////////////////////////////////////
@@ -319,11 +331,13 @@ enum struct app_status_t
 // Application state.
 struct app_context_t
 {
+    // Display data. //////////////////
     app_status_t status = app_status_t::logged_out;
     bool show_debug_window	= true;
     bool show_demo_window	= false;
+    int new_font_size_index = -1; // If greater than zero, contains the index of the new font size to use.
     
-    // General data. //////////////////////////////////////////////////////////
+    // General data. //////////////////
     std::string access_token;
     std::string flash; // Messages (usually errors) that should be highlighted to the user.
     std::string endpoint;
@@ -341,7 +355,7 @@ struct app_context_t
     std::string component_debug_json = "Click a component to display its JSON.\nThe format is:\n  Type: Name [Info]\n\nInfo varies by component:\n- Reference [Target Type]\n- View [Template]";
     std::string field_debug_json = "Click a field to display its JSON.";
 
-    // DX API response data. //////////////////////////////////////////////////
+    // DX API response data. //////////
     std::vector<case_type_t>    case_types;
     case_info_t				    case_info;
     resources_t                 resources;
@@ -350,7 +364,7 @@ struct app_context_t
     std::string                 root_component_key;
     std::string                 etag; // https://docs.pega.com/bundle/dx-api/page/platform/dx-api/building-constellation-dx-api-request.html
     
-    // Threading data. ////////////////////////////////////////////////////////
+    // Threading data. ////////////////
     net_call_queue_t     dx_request_queue;
     std::mutex          dx_request_mutex;
     net_call_queue_t     dx_response_queue;
@@ -365,6 +379,15 @@ struct app_context_t
 
 #pragma region Helper functions:
 ///////////////////////////////////////////////////////////////////////////////
+
+// Returns the number of milliseconds that have passed since the high resolution clock epoch.
+auto get_ticks() -> std::chrono::milliseconds
+{
+    auto now = std::chrono::high_resolution_clock::now();
+    auto duration = now.time_since_epoch();
+    auto ticks = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    return ticks;
+}
 
 // Return lowercase string. "Good enough is good enough."
 auto to_lower(std::string_view str) -> std::string
@@ -411,6 +434,45 @@ auto to_bool(const json& j) -> bool
     }
 
     return false;
+}
+
+// Read applicaton configuration.
+auto read_config(app_context_t& app) -> void
+{
+    try
+    {
+        std::ifstream i(config_file_name);
+        json j;
+        i >> j;
+
+        app.user_id = j["user_id"];
+        app.password = j["password"];
+        app.server = j["server"];
+        app.dx_api_path = j["dx_api_path"];
+        app.token_endpoint = j["token_endpoint"];
+        app.client_id = j["client_id"];
+        app.client_secret = j["client_secret"];
+    }
+    catch (const std::exception& e)
+    {
+        SDL_Log("Could not read settings file: %s", config_file_name);
+        SDL_Log("Reason: %s", e.what());
+    }
+}
+
+// Write application configuration.
+auto write_config(app_context_t& app) -> void
+{
+    std::ofstream o(config_file_name);
+    json j;
+    j["user_id"] = app.user_id;
+    j["password"] = app.password;
+    j["server"] = app.server;
+    j["dx_api_path"] = app.dx_api_path;
+    j["token_endpoint"] = app.token_endpoint;
+    j["client_id"] = app.client_id;
+    j["client_secret"] = app.client_secret;
+    o << std::setw(json_indent) << j << std::endl;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -858,18 +920,6 @@ auto parse_dx_response(app_context_t& app, std::string_view response_body) -> vo
     } // End of UI resources parsing.
 }
 
-// Returns a DX API call struct with the most common initialization.
-auto create_dx_call(const app_context_t& app, const net_call_type_t type) -> net_call_t
-{
-    net_call_t call;
-    call.type = type;
-    call.server = app.server;
-    call.access_token = app.access_token;
-    call.dx_api_path = app.dx_api_path;
-
-    return call;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 #pragma endregion
 
@@ -1143,6 +1193,104 @@ auto handle_response(net_call_t& call, app_context_t& app) -> void
     }
 }
 
+// Returns a net call struct with the most common initialization.
+auto make_net_call(const app_context_t& app, const net_call_type_t type) -> net_call_t
+{
+    net_call_t call;
+    call.type = type;
+    call.server = app.server;
+    call.access_token = app.access_token;
+    call.dx_api_path = app.dx_api_path;
+
+    return call;
+}
+
+// Pushes a network call to login to the Pega instance.
+auto login(app_context_t& app) -> void
+{
+    auto call = make_net_call(app, net_call_type_t::login);
+    call.client_id = app.client_id;
+    call.client_secret = app.client_secret;
+    call.user_id = app.user_id;
+    call.password = app.password;
+    call.endpoint = app.token_endpoint;
+
+    std::scoped_lock lock(app.dx_request_mutex);
+    app.dx_request_queue.push(call);
+}
+
+// Pushes a network call to refresh the case types defined in the Pega app.
+auto refresh_case_types(app_context_t& app) -> void
+{
+    auto call = make_net_call(app, net_call_type_t::refresh_case_types);
+    std::scoped_lock lock(app.dx_request_mutex);
+    app.dx_request_queue.push(call);
+}
+
+// Pushes a network call to create a new case of the specified type.
+auto create_case(app_context_t& app, std::string_view work_type_id) -> void
+{
+    auto call = make_net_call(app, net_call_type_t::create_case);
+    call.work_type_id = work_type_id;
+
+    std::scoped_lock lock(app.dx_request_mutex);
+    app.dx_request_queue.push(call);
+}
+
+// Pushes a network call to open the specified assignment.
+auto open_assignment(app_context_t& app, std::string_view assignment_id) -> void
+{
+    auto call = make_net_call(app, net_call_type_t::open_assignment);
+    call.id1 = assignment_id;
+    std::scoped_lock lock(app.dx_request_mutex);
+    app.dx_request_queue.push(call);
+}
+
+// Pushes a network call to open the specified action.
+auto open_assignment_action(app_context_t& app, std::string_view action_id) -> void
+{
+    auto call = make_net_call(app, net_call_type_t::open_assignment_action);
+    call.id1 = app.open_assignment_id;
+    call.id2 = action_id;
+    std::scoped_lock lock(app.dx_request_mutex);
+    app.dx_request_queue.push(call);
+}
+
+// Pushes a network call to submit the currently open assignment action. Assumes that
+// validation has already passed.
+auto submit_open_assignment_action(app_context_t& app) -> void
+{
+    auto call = make_net_call(app, net_call_type_t::submit_assignment_action);
+
+    json content;
+    bool have_content = false;
+    for (const auto& field_pair : app.resources.fields)
+    {
+        const auto& field = field_pair.second;
+        if (field.is_special || field.is_class_key) continue;
+        if (field.is_dirty)
+        {
+            content[field.id] = field.data;
+            have_content = true;
+        }
+    }
+
+    json body;
+    body["content"] = content;
+
+    call.id1 = app.open_assignment_id;
+    call.id2 = app.open_action_id;
+    call.etag = app.etag;
+
+    if (have_content)
+    {
+        call.request_body = body.dump(json_indent);
+    }
+
+    std::scoped_lock lock(app.dx_request_mutex);
+    app.dx_request_queue.push(call);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 #pragma endregion
 
@@ -1247,17 +1395,219 @@ auto draw_component_r(const component_t& component, resources_t& resources, int&
     }
 }
 
-// Renders the main user interface.
+// Draws a spinner/throbber/whatchamacallit to indicate waiting for an action to complete.
+auto draw_spinner() -> void
+{
+    static std::string spinner = "|/-\\";
+    static int index = 0;
+    static auto last_ticks = get_ticks();
+        
+    ImGui::Text("Loading %c", spinner[index]);
+
+    auto current_ticks = get_ticks();
+    auto delta_ticks = current_ticks - last_ticks;
+    if (delta_ticks > spinner_period_ticks)
+    {
+        if (++index >= spinner.length()) index = 0;
+        last_ticks = current_ticks;
+    }
+}
+
+// Draws the main menu.
+auto draw_main_menu(app_context_t& app) -> void
+{
+    if (ImGui::BeginMenuBar())
+    {
+        // Logged-in menu
+        if (app.status != app_status_t::logged_out)
+        {
+            // User menu
+            if (ImGui::BeginMenu(app.user_id.c_str()))
+            {
+                if (ImGui::MenuItem("Logout"))
+                {
+                    app.case_types.clear();
+                    app.status = app_status_t::logged_out;
+                }
+                ImGui::EndMenu();
+            }
+
+            // Create menu
+            if (ImGui::BeginMenu("Create"))
+            {
+                if (ImGui::MenuItem("Refresh Case Types"))
+                {
+                    refresh_case_types(app);
+                }
+
+                // Case types
+                if (!app.case_types.empty())
+                {
+                    ImGui::Separator();
+                    for (auto& work_type : app.case_types)
+                    {
+                        if (ImGui::MenuItem(work_type.name.c_str()))
+                        {
+                            create_case(app, work_type.id);
+                        }
+                        ImGui::SetItemTooltip(work_type.id.c_str());
+                    }
+                }
+
+                ImGui::EndMenu();
+            }
+        }
+
+        // View menu
+        if (ImGui::BeginMenu("View"))
+        {
+            ImGui::MenuItem("Show debug window", nullptr, &app.show_debug_window);
+            ImGui::MenuItem("Show Dear ImGui demo", nullptr, &app.show_demo_window);
+            if (ImGui::BeginMenu("Font size..."))
+            {
+                for (int i = 0; i < font_sizes.size(); ++i)
+                {
+                    auto& io = ImGui::GetIO();
+                    bool selected = (io.FontDefault->FontSize == font_sizes[i].first);
+
+                    if (ImGui::MenuItem(font_sizes[i].second, nullptr, &selected))
+                    {
+                        app.new_font_size_index = i;
+                    }
+                }
+                ImGui::EndMenu();
+            }
+            ImGui::EndMenu();
+        }
+
+        ImGui::EndMenuBar();
+    }
+}
+
+// Draws the login form.
+auto draw_login_form(app_context_t& app) -> void
+{
+    ImGui::InputText("Server", &app.server);
+    ImGui::InputText("DX API Path", &app.dx_api_path);
+    ImGui::InputText("Token Endpoint", &app.token_endpoint);
+    ImGui::InputText("Client ID", &app.client_id);
+    ImGui::InputText("Client Secret", &app.client_secret);
+    ImGui::InputText("User ID", &app.user_id);
+    ImGui::InputText("Password", &app.password);
+
+    if (ImGui::Button("Login"))
+    {
+        login(app);
+    }
+}
+
+// Draws the currently open case.
+auto draw_open_case(app_context_t& app) -> void
+{
+    auto& work = app.case_info;
+
+    if (ImGui::CollapsingHeader("Case", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::SeparatorText("Info");
+        ImGui::LabelText("Case ID", work.business_id.c_str());
+        ImGui::SetItemTooltip(work.id.c_str());
+        ImGui::LabelText("Name", work.name.c_str());
+        ImGui::SetItemTooltip("%s: %s", work.type.id.c_str(), work.type.name.c_str());
+        ImGui::LabelText("Status", work.status.c_str());
+        ImGui::LabelText("Owner", work.owner.c_str());
+        ImGui::LabelText("Created on", work.create_time.c_str());
+        ImGui::LabelText("Created by", work.created_by.c_str());
+        ImGui::LabelText("Updated on", work.last_update_time.c_str());
+        ImGui::LabelText("Updated by", work.last_updated_by.c_str());
+
+        if (!work.assignments.empty())
+        {
+            ImGui::SeparatorText("Assignments");
+            for (auto& assignment_pair : work.assignments)
+            {
+                auto& assignment = assignment_pair.second;
+
+                ImGui::PushID(&assignment);
+                if (assignment.can_perform)
+                {
+                    if (ImGui::Button(assignment.name.c_str()))
+                    {
+                        open_assignment(app, assignment.id);
+                    }
+                }
+                else
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Button, { 1, 0, 0, 1 });
+                    ImGui::Button(assignment.name.c_str());
+                    ImGui::PopStyleColor();
+                    ImGui::SetItemTooltip("You cannot perform this assignment.");
+                }
+                ImGui::PopID();
+            }
+        }
+    }
+}
+
+// Draws the currently open assignment.
+auto draw_open_assignment(app_context_t& app)
+{
+    assert(!app.open_assignment_id.empty());
+    auto& assignment = app.case_info.assignments[app.open_assignment_id];
+
+    if (ImGui::CollapsingHeader("Assignment", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::SeparatorText("Info");
+        ImGui::LabelText("Name", assignment.name.c_str());
+
+        ImGui::SeparatorText("Actions");
+        for (auto& pair : assignment.actions)
+        {
+            auto& action = pair.second;
+            ImGui::PushID(&action);
+            if (ImGui::Button(action.name.c_str()))
+            {
+                open_assignment_action(app, action.id);
+            }
+            ImGui::PopID();
+        }
+    }
+}
+
+// Draws the currently open assignment action.
+auto draw_open_assignment_action(app_context_t& app) -> void
+{
+    assert(!app.open_assignment_id.empty());
+    assert(!app.open_action_id.empty());
+    auto& action = app.case_info.assignments[app.open_assignment_id].actions[app.open_action_id];
+
+    if (ImGui::CollapsingHeader("Action", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        ImGui::SeparatorText("Info");
+        ImGui::LabelText("Name", action.name.c_str());
+
+        ImGui::SeparatorText("View");
+        int component_id = 0;
+        draw_component_r(app.resources.components[app.root_component_key], app.resources, component_id);
+
+        if (ImGui::Button("Submit"))
+        {
+            const auto& root_component = app.resources.components[app.root_component_key];
+            auto are_components_valid = validate_component_r(root_component, app.resources.components, app.resources.fields);
+            if (are_components_valid)
+            {
+                submit_open_assignment_action(app);
+            }
+            else
+            {
+                app.flash = "Validation failed. Did you fill out all required fields?";
+            }
+        }
+    }
+}
+
+// Draws the main user interface.
 auto draw_main_window(app_context_t& app) -> void
 {
-    auto render_loading_message = []()
-    {
-        const char* spinner = "|/-\\";
-        static int index = 0;
-        ImGui::Text("Loading %c", spinner[index++]);
-        if (index >= 4) index = 0;
-    };
-
     ImGui::Begin("Main", nullptr, ImGuiWindowFlags_MenuBar);
 
     // If we have net ops pending, make a note and show a spinner. We
@@ -1270,7 +1620,7 @@ auto draw_main_window(app_context_t& app) -> void
         if (!app.dx_request_queue.empty())
         {
             have_pending_requests = true;
-            render_loading_message();
+            draw_spinner();
         }
     }
 
@@ -1285,226 +1635,29 @@ auto draw_main_window(app_context_t& app) -> void
     // way.
     if (!have_pending_requests)
     {
-        if (ImGui::BeginMenuBar())
-        {
-            // Logged-in menu
-            if (app.status != app_status_t::logged_out)
-            {
-                // User menu
-                if (ImGui::BeginMenu(app.user_id.c_str()))
-                {
-                    if (ImGui::MenuItem("Logout"))
-                    {
-                        app.case_types.clear();
-                        app.status = app_status_t::logged_out;
-                    }
-                    ImGui::EndMenu();
-                }
-
-                // Create menu
-                if (ImGui::BeginMenu("Create"))
-                {
-                    if (ImGui::MenuItem("Refresh Case Types"))
-                    {
-                        auto call = create_dx_call(app, net_call_type_t::refresh_case_types);
-                        std::scoped_lock lock(app.dx_request_mutex);
-                        app.dx_request_queue.push(call);
-                    }
-
-                    // Case types
-                    if (!app.case_types.empty())
-                    {
-                        ImGui::Separator();
-                        for (auto& work_type : app.case_types)
-                        {
-                            if (ImGui::MenuItem(work_type.name.c_str()))
-                            {
-                                auto call = create_dx_call(app, net_call_type_t::create_case);
-                                call.work_type_id = work_type.id;
-                                
-                                std::scoped_lock lock(app.dx_request_mutex);
-                                app.dx_request_queue.push(call);
-                            }
-                            ImGui::SetItemTooltip(work_type.id.c_str());
-                        }
-                    }
-
-                    ImGui::EndMenu();
-                }
-            }
-
-            // View menu
-            if (ImGui::BeginMenu("View"))
-            {
-                ImGui::MenuItem("Show Debug", nullptr, &app.show_debug_window);
-                ImGui::MenuItem("Show Dear ImGui Demo", nullptr, &app.show_demo_window);
-                ImGui::EndMenu();
-            }
-
-            ImGui::EndMenuBar();
-        }
+        draw_main_menu(app);
 
         // Show login form.
         if (app.status == app_status_t::logged_out)
         {
-            ImGui::InputText("Server", &app.server);
-            ImGui::InputText("DX API Path", &app.dx_api_path);
-            ImGui::InputText("Token Endpoint", &app.token_endpoint);
-            ImGui::InputText("Client ID", &app.client_id);
-            ImGui::InputText("Client Secret", &app.client_secret);
-            ImGui::InputText("User ID", &app.user_id);
-            ImGui::InputText("Password", &app.password);
-
-            if (ImGui::Button("Login"))
-            {
-                auto call = create_dx_call(app, net_call_type_t::login);
-                call.client_id        = app.client_id;
-                call.client_secret    = app.client_secret;
-                call.user_id          = app.user_id;
-                call.password         = app.password;
-                call.endpoint         = app.token_endpoint;
-
-                std::scoped_lock lock(app.dx_request_mutex);
-                app.dx_request_queue.push(call);
-            }
+            draw_login_form(app);
         }
 
         // Show open work object.
         else if (app.status == app_status_t::open_case || app.status == app_status_t::open_assignment || app.status == app_status_t::open_action)
         {
-            auto& work = app.case_info;
-
-            if (ImGui::CollapsingHeader("Case", ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::SeparatorText("Info");
-                ImGui::LabelText("Case ID", work.business_id.c_str());
-                ImGui::SetItemTooltip(work.id.c_str());
-                ImGui::LabelText("Name", work.name.c_str());
-                ImGui::SetItemTooltip("%s: %s", work.type.id.c_str(), work.type.name.c_str());
-                ImGui::LabelText("Status", work.status.c_str());
-                ImGui::LabelText("Owner", work.owner.c_str());
-                ImGui::LabelText("Created on", work.create_time.c_str());
-                ImGui::LabelText("Created by", work.created_by.c_str());
-                ImGui::LabelText("Updated on", work.last_update_time.c_str());
-                ImGui::LabelText("Updated by", work.last_updated_by.c_str());
-
-                if (!work.assignments.empty())
-                {
-                    ImGui::SeparatorText("Assignments");
-                    for (auto& assignment_pair : work.assignments)
-                    {
-                        auto& assignment = assignment_pair.second;
-
-                        ImGui::PushID(&assignment);
-                        if (assignment.can_perform)
-                        {
-                            if (ImGui::Button(assignment.name.c_str()))
-                            {
-                                auto call = create_dx_call(app, net_call_type_t::open_assignment);
-                                call.id1 = assignment.id;
-                                std::scoped_lock lock(app.dx_request_mutex);
-                                app.dx_request_queue.push(call);
-                            }
-                        }
-                        else
-                        {
-                            ImGui::PushStyleColor(ImGuiCol_Button, { 1, 0, 0, 1 });
-                            ImGui::Button(assignment.name.c_str());
-                            ImGui::PopStyleColor();
-                            ImGui::SetItemTooltip("You cannot perform this assignment.");
-                        }
-                        ImGui::PopID();
-                    }
-                }
-            }
+            draw_open_case(app);
 
             // Show open assignment.
             if (app.status == app_status_t::open_assignment || app.status == app_status_t::open_action)
             {
-                assert(!app.open_assignment_id.empty());
-                auto& assignment = work.assignments[app.open_assignment_id];
-
-                if (ImGui::CollapsingHeader("Assignment", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    ImGui::SeparatorText("Info");
-                    ImGui::LabelText("Name", assignment.name.c_str());
-
-                    ImGui::SeparatorText("Actions");
-                    for (auto& pair : assignment.actions)
-                    {
-                        auto& action = pair.second;
-                        ImGui::PushID(&action);
-                        if (ImGui::Button(action.name.c_str()))
-                        {
-                            auto call = create_dx_call(app, net_call_type_t::open_assignment_action);
-                            call.id1 = assignment.id;
-                            call.id2 = action.id;
-                            std::scoped_lock lock(app.dx_request_mutex);
-                            app.dx_request_queue.push(call);
-                        }
-                        ImGui::PopID();
-                    }
-                }
+                draw_open_assignment(app);
             }
 
             // Show open action.
             if (app.status == app_status_t::open_action)
             {
-                assert(!app.open_assignment_id.empty());
-                assert(!app.open_action_id.empty());
-                auto& action = app.case_info.assignments[app.open_assignment_id].actions[app.open_action_id];
-                
-                if (ImGui::CollapsingHeader("Action", ImGuiTreeNodeFlags_DefaultOpen))
-                {
-                    ImGui::SeparatorText("Info");
-                    ImGui::LabelText("Name", action.name.c_str());
-
-                    ImGui::SeparatorText("View");
-                    int component_id = 0;
-                    draw_component_r(app.resources.components[app.root_component_key], app.resources, component_id);
-
-                    if (ImGui::Button("Submit"))
-                    {
-                        const auto& root_component = app.resources.components[app.root_component_key];
-                        auto are_components_valid = validate_component_r(root_component, app.resources.components, app.resources.fields);
-                        if (are_components_valid)
-                        {
-                            auto call = create_dx_call(app, net_call_type_t::submit_assignment_action);
-
-                            json content;
-                            bool have_content = false;
-                            for (const auto& field_pair : app.resources.fields)
-                            {
-                                const auto& field = field_pair.second;
-                                if (field.is_special || field.is_class_key) continue;
-                                if (field.is_dirty)
-                                {
-                                    content[field.id] = field.data;
-                                    have_content = true;
-                                }
-                            }
-
-                            json body;
-                            body["content"] = content;
-
-                            call.id1 = app.open_assignment_id;
-                            call.id2 = app.open_action_id;
-                            call.etag = app.etag;
-
-                            if (have_content)
-                            {
-                                call.request_body = body.dump(json_indent);
-                            }
-
-                            std::scoped_lock lock(app.dx_request_mutex);
-                            app.dx_request_queue.push(call);
-                        }
-                        else
-                        {
-                            app.flash = "Validation failed. Did you fill out all required fields?";
-                        }
-                    }
-                }
+                draw_open_assignment_action(app);
             }
         }
     }
@@ -1512,27 +1665,75 @@ auto draw_main_window(app_context_t& app) -> void
     ImGui::End();
 }
 
-// Render the debug user interface.
+// Draws information about network calls and responses.
+auto draw_debug_calls(app_context_t& app) -> void
+{
+    auto font_size = ImGui::GetFontSize();
+
+    ImGui::PushItemWidth(font_size * -10); // In practice this seems to work out to a little less than 20 characters of space for labels.
+
+    ImGui::InputText("Endpoint", &app.endpoint, ImGuiInputTextFlags_ReadOnly);
+
+    ImGui::InputTextMultiline("Request headers", &app.request_headers, ImVec2(0, 3 * font_size), ImGuiInputTextFlags_ReadOnly);
+    ImGui::InputTextMultiline("Request body", &app.request_body, ImVec2(0, 5 * font_size), ImGuiInputTextFlags_ReadOnly);
+    ImGui::InputTextMultiline("Response headers", &app.response_headers, ImVec2(0, 10 * font_size), ImGuiInputTextFlags_ReadOnly);
+    ImGui::InputTextMultiline("Response body", &app.response_body, ImVec2(0, 20 * font_size), ImGuiInputTextFlags_ReadOnly);
+
+    ImGui::PopItemWidth();
+}
+
+// Draws a tree view of components in use starting with root.
+auto draw_debug_components(app_context_t& app) -> void
+{
+    auto font_size = ImGui::GetFontSize();
+
+    ImGui::BeginGroup();
+    draw_component_debug_r(app.resources.components[app.root_component_key], app.resources.components, app.component_debug_json);
+    ImGui::EndGroup();
+
+    ImGui::SameLine();
+    ImGui::InputTextMultiline("##ComponentJSON", &app.component_debug_json, ImVec2(-font_size, -font_size), ImGuiInputTextFlags_ReadOnly);
+}
+
+// Draws fields currently in use.
+auto draw_debug_fields(app_context_t& app) -> void
+{
+    auto font_size = ImGui::GetFontSize();
+
+    ImGui::BeginGroup();
+    for (const auto& field : app.resources.fields)
+    {
+        ImGui::Text(field.first.c_str());
+        if (ImGui::IsItemClicked())
+        {
+            app.field_debug_json = field.second.json;
+        }
+    }
+    ImGui::EndGroup();
+
+    ImGui::SameLine();
+    ImGui::InputTextMultiline("##FieldJSON", &app.field_debug_json, ImVec2(-font_size, -font_size), ImGuiInputTextFlags_ReadOnly);
+}
+
+// Draws content currently in use.
+auto draw_debug_content(app_context_t& app) -> void
+{
+    for (const auto& content : app.case_info.content)
+    {
+        ImGui::Text("%s: %s", content.first.c_str(), content.second.c_str());
+    }
+}
+
+// Draws the debug user interface.
 auto draw_debug_window(app_context_t& app) -> void
 {
     ImGui::Begin("Debug", &app.show_debug_window);
 
     if (ImGui::BeginTabBar("DebugTabBar"))
     {
-        auto font_size = ImGui::GetFontSize();
-
         if (ImGui::BeginTabItem("Calls"))
         {
-            ImGui::PushItemWidth(font_size * -10); // In practice this seems to work out to a little less than 20 characters of space for labels.
-
-            ImGui::InputText("Endpoint", &app.endpoint, ImGuiInputTextFlags_ReadOnly);
-
-            ImGui::InputTextMultiline("Request headers", &app.request_headers, ImVec2(0, 3 * font_size), ImGuiInputTextFlags_ReadOnly);
-            ImGui::InputTextMultiline("Request body", &app.request_body, ImVec2(0, 5 * font_size), ImGuiInputTextFlags_ReadOnly);
-            ImGui::InputTextMultiline("Response headers", &app.response_headers, ImVec2(0, 10 * font_size), ImGuiInputTextFlags_ReadOnly);
-            ImGui::InputTextMultiline("Response body", &app.response_body, ImVec2(0, 20 * font_size), ImGuiInputTextFlags_ReadOnly);
-
-            ImGui::PopItemWidth();
+            draw_debug_calls(app);
             ImGui::EndTabItem();
         }
 
@@ -1540,12 +1741,7 @@ auto draw_debug_window(app_context_t& app) -> void
         {
             if (!app.resources.components.empty())
             {
-                ImGui::BeginGroup();
-                draw_component_debug_r(app.resources.components[app.root_component_key], app.resources.components, app.component_debug_json);
-                ImGui::EndGroup();
-
-                ImGui::SameLine();
-                ImGui::InputTextMultiline("##ComponentJSON", &app.component_debug_json, ImVec2(-font_size, -font_size), ImGuiInputTextFlags_ReadOnly);
+                draw_debug_components(app);
             }
             ImGui::EndTabItem();
         }
@@ -1554,19 +1750,7 @@ auto draw_debug_window(app_context_t& app) -> void
         {
             if (!app.resources.fields.empty())
             {
-                ImGui::BeginGroup();
-                for (const auto& field : app.resources.fields)
-                {
-                    ImGui::Text(field.first.c_str());
-                    if (ImGui::IsItemClicked())
-                    {
-                        app.field_debug_json = field.second.json;
-                    }
-                }
-                ImGui::EndGroup();
-
-                ImGui::SameLine();
-                ImGui::InputTextMultiline("##FieldJSON", &app.field_debug_json, ImVec2(-font_size, -font_size), ImGuiInputTextFlags_ReadOnly);
+                draw_debug_fields(app);
             }
 
             ImGui::EndTabItem();
@@ -1576,10 +1760,7 @@ auto draw_debug_window(app_context_t& app) -> void
         {
             if (!app.case_info.content.empty())
             {
-                for (const auto& content : app.case_info.content)
-                {
-                    ImGui::Text("%s: %s", content.first.c_str(), content.second.c_str());
-                }
+                draw_debug_content(app);
             }
 
             ImGui::EndTabItem();
@@ -1588,10 +1769,9 @@ auto draw_debug_window(app_context_t& app) -> void
         ImGui::EndTabBar();
     }
     ImGui::End();
-
 }
 
-// Render the flash window with a button to clear the flash and close the window.
+// Draws a "modal" that displays the flash message with a button to clear it.
 auto draw_flash_window(app_context_t& app) -> void
 {
     ImGui::Begin("Alert");
@@ -1615,7 +1795,7 @@ auto network_thread_main_loop(app_context_t& app) -> void
 {
     while (!app.shutdown_requested.test())
     {
-        auto time_begin = std::chrono::steady_clock::now();
+        auto ticks_begin = get_ticks();
 
         net_call_t call;
         bool have_call = false;
@@ -1640,13 +1820,12 @@ auto network_thread_main_loop(app_context_t& app) -> void
             app.dx_request_queue.pop();
         }
 
-        auto ms_per_frame = std::chrono::milliseconds(25);
-        auto time_end = std::chrono::steady_clock::now();
-        auto delta_time = std::chrono::duration_cast<std::chrono::milliseconds>(time_end - time_begin);
-        if (delta_time < ms_per_frame)
+        auto ticks_end = get_ticks();
+        auto delta_ticks = ticks_end - ticks_begin;
+        if (delta_ticks < network_thread_period_ticks)
         {
-            auto sleep_time = ms_per_frame - delta_time;
-            std::this_thread::sleep_for(sleep_time);
+            auto sleep_ticks = network_thread_period_ticks - delta_ticks;
+            std::this_thread::sleep_for(sleep_ticks);
         }
     }
 }
@@ -1658,8 +1837,7 @@ auto app_thread_main_loop(app_context_t& app, SDL_Window* window, SDL_Renderer* 
 
     while (!app.shutdown_requested.test())
     {
-        // Immediately process local events for no other reason than that I 
-        // personally enjoy low-latency/high-responsiveness experiences.
+        // Handle events.
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
@@ -1700,6 +1878,13 @@ auto app_thread_main_loop(app_context_t& app, SDL_Window* window, SDL_Renderer* 
             continue;
         }
 
+        // Check to see if we should switch fonts.
+        if (app.new_font_size_index >= 0)
+        {
+            io.FontDefault = io.Fonts->Fonts[app.new_font_size_index];
+            app.new_font_size_index = -1;
+        }
+
         // Start frame.
         ImGui_ImplSDLRenderer2_NewFrame();
         ImGui_ImplSDL2_NewFrame();
@@ -1738,48 +1923,16 @@ auto app_thread_main_loop(app_context_t& app, SDL_Window* window, SDL_Renderer* 
 
 int main(int, char**)
 {
-    // Allocate on heap to avoid stack overflow, then get a reference for convenience.
     namespace dx = dx_api_explorer;
     auto app_context = std::make_unique<dx::app_context_t>();
     auto& app = *app_context;
+    dx::read_config(app); // Todo: this seems to not require the dx:: prefix, why?
 
-    // Read configuration:
-    {
-        try
-        {
-            std::ifstream i(dx::config_file_name);
-            json j;
-            i >> j;
-
-            app.user_id = j["user_id"];
-            app.password = j["password"];
-            app.server = j["server"];
-            app.dx_api_path = j["dx_api_path"];
-            app.token_endpoint = j["token_endpoint"];
-            app.client_id = j["client_id"];
-            app.client_secret = j["client_secret"];
-        }
-        catch (const std::exception& e)
-        {
-            SDL_Log("Could not read settings file: %s", dx::config_file_name);
-            SDL_Log("Reason: %s", e.what());
-        }
-    }
-
-    #pragma region Initialize SDL:
-    // We handle initialization here in a deliberate sequence and setup automatic
-    // teardown. We don't cache resource pointers in the app context to avoid
-    // ownership issues and keep destruction uncomplicated. Being pointers, there
-    // is no real risk of stack overflow.
-    // 
-    // Note that we fold this with a region, not a scope, so as not to trigger
-    // SDL shutdown prematurely since we're using a scope exit hook for teardown.
     int sdl_init_result = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_GAMECONTROLLER);
     assert(sdl_init_result == 0);
     dx::scope_exit sdl_quit(&SDL_Quit);
     SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1");
 
-    // Create SDL Window:
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED);
     dx::unique_ptr_t<SDL_Window, &SDL_DestroyWindow> window_uptr
     (
@@ -1788,27 +1941,48 @@ int main(int, char**)
     SDL_Window* window = window_uptr.get();
     assert(window);
 
-    // Create SDL Renderer:
     dx::unique_ptr_t<SDL_Renderer, &SDL_DestroyRenderer> renderer_uptr
     (
         SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED)
     );
     SDL_Renderer* renderer = renderer_uptr.get();
     assert(renderer);
-    #pragma endregion
 
-    #pragma region Initialize Dear ImGui
-    // We fold with a region, not a scope, to avoid premature destruction.
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     dx::scope_exit destroy_imgui_context([]() { ImGui::DestroyContext(); });
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
     io.ConfigDebugIsDebuggerPresent = true;
-    io.Fonts->AddFontFromFileTTF("Cousine-Regular.ttf", 20.0f);
     ImGui::StyleColorsLight();
 
-    // Setup SDL2 Renderer ImGui backend.
+    // Load fonts and attempt to select a reasonable default.
+    {
+        int w, h;
+        int font_index = int(dx::font_sizes.size() - 1);
+        int err = SDL_GetRendererOutputSize(renderer, &w, &h);
+        if (err != 0)
+        {
+            SDL_Log("Could not determine renderer output size: %s", SDL_GetError());
+        }
+        else
+        {
+            int calculated_index  = int(w * 1.0f / dx::hidpi_pixel_width_threshold);
+            if (calculated_index < dx::font_sizes.size())
+            {
+                font_index = calculated_index;
+            }
+
+            SDL_Log("Renderer is %d pixels wide, using default font size of %f.", w, dx::font_sizes[font_index].first);
+        }
+        
+        for (const auto& font_size : dx::font_sizes)
+        {
+            io.Fonts->AddFontFromFileTTF(dx::font_file_name, font_size.first);
+        }
+        io.FontDefault = io.Fonts->Fonts[font_index];
+    }
+
     ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer2_Init(renderer);
     dx::scope_exit shutdown_imgui_renderer([]()
@@ -1816,26 +1990,11 @@ int main(int, char**)
         ImGui_ImplSDLRenderer2_Shutdown();
         ImGui_ImplSDL2_Shutdown();
     });
-    #pragma endregion
 
-    // Run main loops:
     std::thread network_thread(dx::network_thread_main_loop, std::ref(app));
-    dx::scope_exit network_thread_join([&]() { network_thread.join(); });
-    app_thread_main_loop(app, window, renderer);
+    dx::app_thread_main_loop(app, window, renderer);
+    network_thread.join();
 
-    // Write configuration:
-    {
-        std::ofstream o(dx::config_file_name);
-        json j;
-        j["user_id"] = app.user_id;
-        j["password"] = app.password;
-        j["server"] = app.server;
-        j["dx_api_path"] = app.dx_api_path;
-        j["token_endpoint"] = app.token_endpoint;
-        j["client_id"] = app.client_id;
-        j["client_secret"] = app.client_secret;
-        o << std::setw(dx::json_indent) << j << std::endl;
-    }
-
+    dx::write_config(app);
     return 0;
 }
