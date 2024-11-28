@@ -2,7 +2,7 @@
 
 This app helps you understand [Pega's Constellation DX API](https://docs.pega.com/bundle/dx-api/page/platform/dx-api/dx-api-version-2-con.html) by showing it in action. It's a desktop application that let's you work through a [case](https://docs.pega.com/bundle/platform/page/platform/case-management/case-management-overview.html), providing detailed developer information so you know *exactly* what the DX API is doing every step of the way.
 
-## Key points:
+## Key points
 
 - Custom front-end to [Pega Infinity](https://www.pega.com/infinity) applications that use [Constellation UI](https://docs.pega.com/bundle/platform/page/platform/user-experience/constellation-architecture.html).
 - Can work through a full [case lifecycle](https://docs.pega.com/bundle/platform/page/platform/case-management/case-life-cycle-elements.html), from creation to resolution.
