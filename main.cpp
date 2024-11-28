@@ -1495,7 +1495,7 @@ auto draw_login_form(app_context_t& app) -> void
     ImGui::InputText("Client ID", &app.client_id);
     ImGui::InputText("Client Secret", &app.client_secret);
     ImGui::InputText("User ID", &app.user_id);
-    ImGui::InputText("Password", &app.password);
+    ImGui::InputText("Password", &app.password, ImGuiInputTextFlags_Password);
 
     if (ImGui::Button("Login"))
     {
