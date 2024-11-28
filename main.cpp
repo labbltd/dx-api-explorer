@@ -42,7 +42,7 @@ namespace
         std::make_pair(60.0f, "60")
     };
     constexpr auto font_file_name = "Cousine-Regular.ttf";
-    constexpr auto hidpi_pixel_width_threshold = 900; // Screen width divided by this gives us our default index into or font sizes array.
+    constexpr auto hidpi_pixel_width_threshold = 900; // Screen width divided by this gives us our default index into our font sizes array.
 
 ///////////////////////////////////////////////////////////////////////////////
 #pragma endregion
@@ -335,7 +335,7 @@ struct app_context_t
     app_status_t status = app_status_t::logged_out;
     bool show_debug_window	= true;
     bool show_demo_window	= false;
-    int new_font_size_index = -1; // If greater than zero, contains the index of the new font size to use.
+    int font_index = -1;
     
     // General data. //////////////////
     std::string access_token;
@@ -452,10 +452,11 @@ auto read_config(app_context_t& app) -> void
         app.token_endpoint = j["token_endpoint"];
         app.client_id = j["client_id"];
         app.client_secret = j["client_secret"];
+        app.font_index = j["font_index"];
     }
     catch (const std::exception& e)
     {
-        SDL_Log("Could not read settings file: %s", config_file_name);
+        SDL_Log("Error reading settings file: %s", config_file_name);
         SDL_Log("Reason: %s", e.what());
     }
 }
@@ -472,6 +473,7 @@ auto write_config(app_context_t& app) -> void
     j["token_endpoint"] = app.token_endpoint;
     j["client_id"] = app.client_id;
     j["client_secret"] = app.client_secret;
+    j["font_index"] = app.font_index;
     o << std::setw(json_indent) << j << std::endl;
 }
 
@@ -1463,7 +1465,7 @@ auto draw_main_menu(app_context_t& app) -> void
         {
             ImGui::MenuItem("Show debug window", nullptr, &app.show_debug_window);
             ImGui::MenuItem("Show Dear ImGui demo", nullptr, &app.show_demo_window);
-            if (ImGui::BeginMenu("Font size..."))
+            if (ImGui::BeginMenu("Font size"))
             {
                 for (int i = 0; i < font_sizes.size(); ++i)
                 {
@@ -1472,7 +1474,7 @@ auto draw_main_menu(app_context_t& app) -> void
 
                     if (ImGui::MenuItem(font_sizes[i].second, nullptr, &selected))
                     {
-                        app.new_font_size_index = i;
+                        app.font_index = i;
                     }
                 }
                 ImGui::EndMenu();
@@ -1879,10 +1881,11 @@ auto app_thread_main_loop(app_context_t& app, SDL_Window* window, SDL_Renderer* 
         }
 
         // Check to see if we should switch fonts.
-        if (app.new_font_size_index >= 0)
+        static int old_font_index = app.font_index;
+        if (app.font_index != old_font_index)
         {
-            io.FontDefault = io.Fonts->Fonts[app.new_font_size_index];
-            app.new_font_size_index = -1;
+            io.FontDefault = io.Fonts->Fonts[app.font_index];
+            old_font_index = app.font_index;
         }
 
         // Start frame.
@@ -1956,10 +1959,12 @@ int main(int, char**)
     io.ConfigDebugIsDebuggerPresent = true;
     ImGui::StyleColorsLight();
 
-    // Load fonts and attempt to select a reasonable default.
+    // If we didn't get a font size from our (potentially non-existant) config file, try
+    // to select a reasonable default based on screen resolution as a proxy for DPI.
+    // Todo: this mechanism recommends overly large fonts for big normal DPI monitors.
+    if (app.font_index < 0)
     {
         int w, h;
-        int font_index = int(dx::font_sizes.size() - 1);
         int err = SDL_GetRendererOutputSize(renderer, &w, &h);
         if (err != 0)
         {
@@ -1970,18 +1975,19 @@ int main(int, char**)
             int calculated_index  = int(w * 1.0f / dx::hidpi_pixel_width_threshold);
             if (calculated_index < dx::font_sizes.size())
             {
-                font_index = calculated_index;
+                app.font_index = calculated_index;
             }
 
-            SDL_Log("Renderer is %d pixels wide, using default font size of %f.", w, dx::font_sizes[font_index].first);
+            SDL_Log("Renderer is %d pixels wide, using default font size of %f.", w, dx::font_sizes[app.font_index].first);
         }
         
-        for (const auto& font_size : dx::font_sizes)
-        {
-            io.Fonts->AddFontFromFileTTF(dx::font_file_name, font_size.first);
-        }
-        io.FontDefault = io.Fonts->Fonts[font_index];
     }
+
+    for (const auto& font_size : dx::font_sizes)
+    {
+        io.Fonts->AddFontFromFileTTF(dx::font_file_name, font_size.first);
+    }
+    io.FontDefault = io.Fonts->Fonts[app.font_index];
 
     ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer2_Init(renderer);
