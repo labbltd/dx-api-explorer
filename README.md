@@ -6,6 +6,8 @@ This is a work in progress...
 
 Make sure you have the latest Microsoft Visual C++ redistributable installed: https://aka.ms/vs/17/release/vc_redist.x64.exe
 
+At the time of this writing, you'll have to build from source, but an independently usable release build is top of the TODO.
+
 ## Client Registration Setup
 - Important stuff:
 	- Type of client: Confidential
