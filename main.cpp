@@ -1610,6 +1610,18 @@ auto draw_open_assignment_action(app_context_t& app) -> void
 // Draws the main user interface.
 auto draw_main_window(app_context_t& app) -> void
 {
+    static bool first_call = true;
+
+    if (first_call)
+    {
+        first_call = false;
+
+        const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+        auto font_size = ImGui::GetFontSize();
+        ImGui::SetNextWindowPos(ImVec2(main_viewport->WorkPos.x + font_size, main_viewport->WorkPos.y + font_size), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(main_viewport->WorkSize.x / 2.0f - font_size*1.5f, main_viewport->WorkSize.y - font_size * 2.0f), ImGuiCond_FirstUseEver);
+    }
+
     ImGui::Begin("Main", nullptr, ImGuiWindowFlags_MenuBar);
 
     // If we have net ops pending, make a note and show a spinner. We
@@ -1729,6 +1741,19 @@ auto draw_debug_content(app_context_t& app) -> void
 // Draws the debug user interface.
 auto draw_debug_window(app_context_t& app) -> void
 {
+    static bool first_call = true;
+
+    if (first_call)
+    {
+        first_call = false;
+
+        const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+        auto font_size = ImGui::GetFontSize();
+        float next_pos_x = main_viewport->WorkSize.x / 2.0f + font_size / 2.0f;
+        ImGui::SetNextWindowPos(ImVec2(next_pos_x, main_viewport->WorkPos.y + font_size), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(main_viewport->WorkSize.x - next_pos_x - font_size, main_viewport->WorkSize.y - font_size*2.0f), ImGuiCond_FirstUseEver);
+    }
+
     ImGui::Begin("Debug", &app.show_debug_window);
 
     if (ImGui::BeginTabBar("DebugTabBar"))
@@ -1776,6 +1801,17 @@ auto draw_debug_window(app_context_t& app) -> void
 // Draws a "modal" that displays the flash message with a button to clear it.
 auto draw_flash_window(app_context_t& app) -> void
 {
+    static bool first_call = true;
+
+    if (first_call)
+    {
+        first_call = false;
+
+        const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(ImVec2(main_viewport->WorkSize.x * 0.4f, main_viewport->WorkSize.y * 0.4f), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(main_viewport->WorkSize.x * 0.2f, main_viewport->WorkSize.y * 0.2f), ImGuiCond_FirstUseEver);
+    }
+
     ImGui::Begin("Alert");
     ImGui::TextWrapped(app.flash.c_str());
     if (ImGui::Button("OK"))
