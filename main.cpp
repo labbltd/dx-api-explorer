@@ -1764,7 +1764,7 @@ auto draw_debug_window(app_context_t& app) -> void
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem("Components"))
+        if (ImGui::BeginTabItem("Structure"))
         {
             if (!app.resources.components.empty())
             {
