@@ -43,6 +43,7 @@ namespace
     };
     constexpr auto font_file_name = "Cousine-Regular.ttf";
     constexpr auto hidpi_pixel_width_threshold = 900; // Screen width divided by this gives us our default index into our font sizes array.
+    constexpr auto selected_text_color = ImVec4(0, 0, 1, 1);
 
 ///////////////////////////////////////////////////////////////////////////////
 #pragma endregion
@@ -160,10 +161,11 @@ struct component_t
     std::string debug_string;
     std::string broken_string;
 
-    bool is_readonly = false;
-    bool is_required = false;
-    bool is_disabled = false;
-    bool is_broken = false;
+    bool is_readonly    = false;
+    bool is_required    = false;
+    bool is_disabled    = false;
+    bool is_broken      = false;
+    bool is_selected    = false;
 
     component_type_t ref_type = component_type_t::component_type_unspecified; // Referenced component / type of template.
     component_list_t children;
@@ -1299,13 +1301,45 @@ auto submit_open_assignment_action(app_context_t& app) -> void
 #pragma region Draw functions:
 ///////////////////////////////////////////////////////////////////////////////
 
+// Recursively marks all components as not selected.
+auto deselect_component_r(component_t& component, component_map_t& component_map) -> void
+{
+    component.is_selected = false;
+    
+    if (component.type == component_type_reference && !component.is_broken)
+    {
+        auto& reference = component_map.at(component.key);
+        deselect_component_r(reference, component_map);
+    }
+
+    if (!component.children.empty())
+    {
+        for (auto& child : component.children)
+        {
+            deselect_component_r(child, component_map);
+        }
+    }
+}
+
 // Recursively draws debug component information.
 auto draw_component_debug_r(component_t& component, component_map_t& component_map, std::string& component_debug_json) -> void
 {
     ImGui::TreePush(&component);
-    ImGui::Text(component.debug_string.c_str());
-    if (ImGui::IsItemClicked())
+
+    auto text_color = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    if (component.is_selected)
     {
+        text_color = selected_text_color;
+    }
+    ImGui::TextColored(text_color, component.debug_string.c_str());
+    if (ImGui::IsItemClicked() && !component.is_selected)
+    {
+        // Deselect all components, then select this one. It will render as selected on the next frame.
+        for (auto& pair : component_map)
+        {
+            deselect_component_r(pair.second, component_map);
+        }
+        component.is_selected = true;
         component_debug_json = component.json;
     }
 
@@ -1333,7 +1367,7 @@ auto draw_component_debug_r(component_t& component, component_map_t& component_m
 }
 
 // Recursively draws components.
-auto draw_component_r(const component_t& component, resources_t& resources, int& id) -> void
+auto draw_component_r(component_t& component, resources_t& resources, int& id, std::string& component_debug_json) -> void
 {
     ImGui::PushID(id++);
     switch (component.type)
@@ -1343,7 +1377,7 @@ auto draw_component_r(const component_t& component, resources_t& resources, int&
             if (!component.is_broken)
             {
                 auto& reference = resources.components.at(component.key);
-                draw_component_r(reference, resources, id);
+                draw_component_r(reference, resources, id, component_debug_json);
             }
         } break;
         case component_type_text_area:
@@ -1373,9 +1407,32 @@ auto draw_component_r(const component_t& component, resources_t& resources, int&
             {
                 ImGui::LabelText(component.label.c_str(), field.data.c_str());
             }
+            
             ImGui::SameLine();
+
+            auto was_component_selected = component.is_selected;
+            if (component.is_selected)
+            {
+                ImGui::PushStyleColor(ImGuiCol_TextDisabled, selected_text_color);
+            }
             ImGui::TextDisabled("(?)");
+            if (ImGui::IsItemClicked() && !component.is_selected)
+            {
+                // Deselect all components, then select this one. It will render as selected on the next frame.
+                for (auto& pair : resources.components)
+                {
+                    deselect_component_r(pair.second, resources.components);
+                }
+                component.is_selected = true;
+                component_debug_json = component.json;
+            }
+            if (was_component_selected)
+            {
+                ImGui::PopStyleColor();
+            }
+
             ImGui::SetItemTooltip(component.key.c_str());
+
         } break;
     }
     ImGui::PopID();
@@ -1392,7 +1449,7 @@ auto draw_component_r(const component_t& component, resources_t& resources, int&
     {
         for (auto& child : component.children)
         {
-            draw_component_r(child, resources, id);
+            draw_component_r(child, resources, id, component_debug_json);
         }
     }
 }
@@ -1589,7 +1646,7 @@ auto draw_open_assignment_action(app_context_t& app) -> void
 
         ImGui::SeparatorText("View");
         int component_id = 0;
-        draw_component_r(app.resources.components[app.root_component_key], app.resources, component_id);
+        draw_component_r(app.resources.components[app.root_component_key], app.resources, component_id, app.component_debug_json);
 
         if (ImGui::Button("Submit"))
         {

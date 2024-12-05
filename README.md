@@ -54,7 +54,12 @@ Once connected, you will see a `Create` menu in the main window. This will allow
 
 An open case shows buttons for its open assignments. Click a button to open an assignment. In turn, an open assignment shows buttons for opening the available actions.
 
-An open action shows a form built out dynamically as specified by the DX API. The additional tabs in the debug window are very handy here for programmatically understanding the components, fields, and content. Fill the form out and submit it to complete the assignment and close it out, updating the case information. Keep working in this way to progress through a complete case lifecycle.
+An open action shows a form built out dynamically as specified by the DX API. Fill the form out and submit it to complete the assignment and close it out, updating the case information. Keep working in this way to progress through a complete case lifecycle.
+
+### Debug window
+The additional tabs in the debug window are very handy here for programmatically understanding the structure, fields, and content.
+
+In particular, the `Structure` tab is helpful for understanding how to interpret the `uiMetadata` portion of the DX API Response. Click on a component to select it and its JSON. For a visible component, this will also change the color of the info marker (the `(?)` icon) for that component in the main window. You can also click on the info marker to select the component.
 
 ### Customizing
 The view menu lets you toggle additional windows. You can move and resize the windows, and the app will remember these settings.
