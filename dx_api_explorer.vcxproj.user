@@ -4,7 +4,7 @@
     <ShowAllFiles>true</ShowAllFiles>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <LocalDebuggerEnvironment>PATH=%PATH%;$(ProjectDir)\lib\SDL2-2.30.5\lib\x64;$(ProjectDir)\lib\OpenSSL-3.3.1\bin
+    <LocalDebuggerEnvironment>PATH=$(ProjectDir)lib\SDL2-2.30.5\lib\x64;$(ProjectDir)lib\OpenSSL-3.3.1\bin
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
   </PropertyGroup>
