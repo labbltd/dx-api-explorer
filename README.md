@@ -18,7 +18,7 @@ This app helps you understand [Pega's Constellation DX API](https://docs.pega.co
 
 ### Installation
 
-Just unzip it and go. You only need to ensure that you have a compatible Infinity application and a with an appropriately configured [OAuth 2.0 client registration](https://docs.pega.com/bundle/platform/page/platform/security/set-up-oauth-2-client-registration.html). It should work on any recent version of Infinity, but I have only tested it on 24.
+Just unzip it and go. You only need to ensure that you have a compatible Infinity application with an appropriately configured [OAuth 2.0 client registration](https://docs.pega.com/bundle/platform/page/platform/security/set-up-oauth-2-client-registration.html). It should work on any recent version of Infinity, but I have only tested it on 24.
 
 ### OAuth 2.0 client registration
 
