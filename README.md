@@ -46,7 +46,7 @@ Upon startup, the application will present a form for connection information. If
 * Client ID and Client Secret: obtained from the OAuth 2.0 client registration.
 * User ID and Password: for [a supported user](https://docs.pega.com/bundle/dx-api/page/platform/dx-api/security-settings-v2.html).
 
-Note that you will see information about the connection call in the debug window. This window will continuously updated itself with each call. This shows you how to chain together DX API calls to get work done.
+Note that you will see information about the connection call in the debug window. This window will continuously update itself with each call. This shows you how to chain together DX API calls to get work done.
 
 ### Working through a case
 
@@ -57,7 +57,7 @@ An open case shows buttons for its open assignments. Click a button to open an a
 An open action shows a form built out dynamically as specified by the DX API. Fill the form out and submit it to complete the assignment and close it out, updating the case information. Keep working in this way to progress through a complete case lifecycle.
 
 ### Debug window
-The additional tabs in the debug window are very handy here for programmatically understanding the structure, fields, and content.
+The additional tabs in the debug window are very handy for programmatically understanding the structure, fields, and content.
 
 In particular, the `Structure` tab is helpful for understanding how to interpret the `uiMetadata` portion of the DX API Response. Click on a component to select it and its JSON. For a visible component, this will also change the color of the info marker (the `(?)` icon) for that component in the main window. You can also click on the info marker to select the component.
 
