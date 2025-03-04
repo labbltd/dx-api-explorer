@@ -11,7 +11,7 @@ This app helps you understand [Pega's Constellation DX API](https://docs.pega.co
 - Saves/loads configuration in `dx_api_explorer_config.json` — keep multiple versions on hand and swap them in to connect to different Pega instances.
 - Startup and shutdown are nearly instantaneous, and uses almost zero CPU.
 - Ships with all dependencies included, except for the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) (make sure you have this installed).
-- Implemented in a single `main.cpp` file in a straightforward funcs-and-structs style that readily translates to different languages and paradigms.
+- Implemented in a straightforward funcs-and-structs style that readily translates to different languages and paradigms.
 - No Windows-specific dependencies, should build on OSX and Linux with just a little bit of work.
 
 ## Usage
