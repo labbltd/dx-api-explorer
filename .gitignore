@@ -1,4 +1,4 @@
 build
 .vs
 /imgui.ini
-/dx_api_explorer_config.json
+/dx_api_explorer_config.json*

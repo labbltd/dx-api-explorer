@@ -396,8 +396,8 @@ auto parse_dx_response(app_context_t& app, std::string_view response_body) -> vo
                     if (to_lower(new_field.type) == "unknown") continue;
 
                     new_field.class_id = value["classID"];
-                    new_field.label = value["label"];
 
+                    if (value.contains("label")) new_field.label = value["label"];
                     if (value.contains("isSpecial")) new_field.is_special = to_bool(value["isSpecial"]);
                     if (value.contains("isClassKey")) new_field.is_class_key = to_bool(value["isClassKey"]);
 
