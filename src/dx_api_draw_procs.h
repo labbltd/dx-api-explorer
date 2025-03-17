@@ -97,8 +97,18 @@ auto draw_component_r(component_t& component, resources_t& resources, int& id, s
     {
         if (!component.is_broken)
         {
+            if (show_xray)
+            {
+                ImGui::Text(component.debug_string.c_str());
+                bbul = ImGui::GetItemRectMin();
+                bblr = ImGui::GetItemRectMax();
+            }
+
             auto& reference = resources.components.at(component.key);
-            draw_component_r(reference, resources, id, component_debug_json, show_xray);
+            ImVec2 ref_bblr = draw_component_r(reference, resources, id, component_debug_json, show_xray);
+
+            bblr.x = std::max(bblr.x, ref_bblr.x);
+            bblr.y = std::max(bblr.y, ref_bblr.y);
         }
     } break;
     case component_type_text_area:
@@ -190,10 +200,10 @@ auto draw_component_r(component_t& component, resources_t& resources, int& id, s
         {
             for (auto& child : component.children)
             {
-                ImVec2 next_max = draw_component_r(child, resources, id, component_debug_json, show_xray);
+                ImVec2 child_bblr = draw_component_r(child, resources, id, component_debug_json, show_xray);
 
-                bblr.x = std::max(bblr.x, next_max.x);
-                bblr.y = std::max(bblr.y, next_max.y);
+                bblr.x = std::max(bblr.x, child_bblr.x);
+                bblr.y = std::max(bblr.y, child_bblr.y);
             }
         }
     } break;
