@@ -20,6 +20,9 @@ This app helps you understand [Pega's Constellation DX API](https://docs.pega.co
 
 ## Usage
 
+### Purpose
+This is a developer tool, and a personal side project. It is not intended for production use, and has not been properly tested/hardened/etc — therefore no support is offered. It *is* intended to help you understand the DX API in particular, and [Pega's Center-out® architecture](https://www.pega.com/technology/center-out) in general.
+
 ### Installation
 
 Just unzip it and go. You only need to ensure that you have a compatible Infinity application with an appropriately configured [OAuth 2.0 client registration](https://docs.pega.com/bundle/platform/page/platform/security/set-up-oauth-2-client-registration.html). It should work on any recent version of Infinity, but I have only tested it on 24.
@@ -66,9 +69,9 @@ The additional tabs in the debug window are very handy for programmatically unde
 In particular, the `Structure` tab is helpful for understanding how to interpret the `uiMetadata` portion of the DX API Response. Click on a component to select it and its JSON. For a visible component, this will also change the color of the info marker (the `(?)` icon) for that component in the main window. You can also click on the info marker to select the component.
 
 ### Customizing
-The view menu lets you toggle additional windows. You can move and resize the windows, and the app will remember these settings.
+The view menu lets you toggle additional windows. You can move and resize the windows, and the app will remember these settings. You can also return to the default layout at any time. And there's a toggle to enable an [XRay visualization akin to that provided by Constellation](https://docs.pega.com/bundle/platform/page/platform/user-experience/debugging-UI.html).
 
-You can also set the font size. The app will attempt to select something reasonable on first run, but the current method is very crude and you will likely find that an alternative size is more suitable.
+You can adjust the font size to taste. The app will attempt to select something reasonable on first run, but the current method is very crude and you will likely find that an alternative size is more suitable.
 
 ## Miscellaneous
 
@@ -103,3 +106,5 @@ This app's code is released into the public domain. The included libraries all s
 ### Contributing
 
 Bugs are likely — issues and pull requests are welcome. As this is a side project and time is short, code which is not in harmony with the general style of the codebase will have to be rejected. Contributing to this project means assenting to said contributions being released into the public domain.
+
+Thanks to [Daniël Wedema](https://github.com/danielwedema) for the idea to incorporate the X-Ray feature.

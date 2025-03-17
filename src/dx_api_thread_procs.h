@@ -2,6 +2,7 @@
 #define DX_API_THREAD_PROCS_H
 
 #include <thread>
+#include <vector>
 #include "dx_api_app_types.h"
 #include "dx_api_constants.h"
 #include "dx_api_draw_procs.h"
@@ -63,7 +64,7 @@ auto app_thread_main_loop(app_context_t& app, SDL_Window* window, SDL_Renderer* 
 
     while (!app.shutdown_requested.test())
     {
-        // Handle events.
+        // Handle input events.
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
@@ -82,6 +83,10 @@ auto app_thread_main_loop(app_context_t& app, SDL_Window* window, SDL_Renderer* 
                 app.shutdown_requested.test_and_set();
             }
         }
+
+        // Process the world's simplest application event bus ever.
+        app.active_events = app.requested_events;
+        app.requested_events.clear();
 
         // Process network responses. We handle all responses at once because we
         // can reasonably assume that processing will go quickly and there will be no

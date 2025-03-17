@@ -20,14 +20,26 @@ enum struct app_status_t
     open_action
 };
 
+// Supported event types. Used for events which can't be handled trivially/locally.
+enum struct app_event_type_t
+{
+    // This causes all windows to go back to default size/placement. It will generally be invoked by a menu
+    // item which will likely live in a window. That window will therefore already have had its layout established
+    // by the time the reset is requested. So we treat the resest as an event, and on the next frame, the window
+    // will check for that event and react to it if active.
+    reset_window_layout
+};
+using app_events_t = std::vector<app_event_type_t>;
+
 // Application state.
 struct app_context_t
 {
     // Display data. //////////////////
-    app_status_t status = app_status_t::logged_out;
-    bool show_debug_window = true;
-    bool show_demo_window = false;
-    int font_index = -1;
+    app_status_t    status              = app_status_t::logged_out;
+    bool            show_debug_window   = true;
+    bool            show_demo_window    = false;
+    bool            show_xray           = false;
+    int             font_index          = -1; // Will trigger auto font size selection.
 
     // General data. //////////////////
     std::string access_token;
@@ -57,11 +69,15 @@ struct app_context_t
     std::string                 etag; // https://docs.pega.com/bundle/dx-api/page/platform/dx-api/building-constellation-dx-api-request.html
 
     // Threading data. ////////////////
-    net_call_queue_t     dx_request_queue;
+    net_call_queue_t    dx_request_queue;
     std::mutex          dx_request_mutex;
-    net_call_queue_t     dx_response_queue;
+    net_call_queue_t    dx_response_queue;
     std::mutex          dx_response_mutex;
     std::atomic_flag    shutdown_requested;
+
+    // World's simplest event bus. ////
+    app_events_t    requested_events;
+    app_events_t    active_events;
 
     app_context_t() { shutdown_requested.clear(); }
 };

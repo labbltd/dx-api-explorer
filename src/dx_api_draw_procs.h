@@ -1,6 +1,7 @@
 #ifndef DX_API_DRAW_PROCS_H
 #define DX_API_DRAW_PROCS_H
 
+#include <algorithm>
 #include <cassert>
 #include <string>
 #include "dx_api_app_types.h"
@@ -79,9 +80,16 @@ auto draw_component_debug_r(component_t& component, component_map_t& component_m
     ImGui::TreePop();
 }
 
-// Recursively draws components.
-auto draw_component_r(component_t& component, resources_t& resources, int& id, std::string& component_debug_json) -> void
+// Recursively draws components, returns the coordinates of the lower-right corner of the bounding box for the component and its children.
+auto draw_component_r(component_t& component, resources_t& resources, int& id, std::string& component_debug_json, bool show_xray) -> ImVec2
 {
+    ImVec2 bbul{}, bblr{}; // Bounding box upper-left and lower-right corners.
+
+    if (show_xray)
+    {
+        ImGui::TreePush(&id);
+    }
+
     ImGui::PushID(id++);
     switch (component.type)
     {
@@ -90,7 +98,7 @@ auto draw_component_r(component_t& component, resources_t& resources, int& id, s
         if (!component.is_broken)
         {
             auto& reference = resources.components.at(component.key);
-            draw_component_r(reference, resources, id, component_debug_json);
+            draw_component_r(reference, resources, id, component_debug_json, show_xray);
         }
     } break;
     case component_type_text_area:
@@ -110,6 +118,9 @@ auto draw_component_r(component_t& component, resources_t& resources, int& id, s
                 ImGui::InputText(component.label.c_str(), &field.data);
             }
 
+            bbul = ImGui::GetItemRectMin();
+            bblr = ImGui::GetItemRectMax();
+
             if (component.is_required)
             {
                 ImGui::SameLine();
@@ -119,6 +130,8 @@ auto draw_component_r(component_t& component, resources_t& resources, int& id, s
         else
         {
             ImGui::LabelText(component.label.c_str(), field.data.c_str());
+            bbul = ImGui::GetItemRectMin();
+            bblr = ImGui::GetItemRectMax();
         }
 
         ImGui::SameLine();
@@ -128,7 +141,12 @@ auto draw_component_r(component_t& component, resources_t& resources, int& id, s
         {
             ImGui::PushStyleColor(ImGuiCol_TextDisabled, selected_text_color);
         }
+        
         ImGui::TextDisabled("(?)");
+
+        // Adjust bounding box width to account for any appended widgets.
+        bblr.x = ImGui::GetItemRectMax().x;
+
         if (ImGui::IsItemClicked() && !component.is_selected)
         {
             // Deselect all components, then select this one. It will render as selected on the next frame.
@@ -147,24 +165,50 @@ auto draw_component_r(component_t& component, resources_t& resources, int& id, s
         ImGui::SetItemTooltip(component.key.c_str());
 
     } break;
+    default:
+    {
+        if (show_xray)
+        {
+            ImGui::Text(component.debug_string.c_str());
+            bbul = ImGui::GetItemRectMin();
+            bblr = ImGui::GetItemRectMax();
+        }
+
+        // If this is a view with an unsupported template, bail.
+        bool should_process_children = !component.children.empty();
+        if (component.type == component_type_view)
+        {
+            if (component.ref_type == component_type_unspecified ||
+                component.ref_type == component_type_unknown)
+            {
+                should_process_children = false;
+            }
+        }
+
+        // Process children.
+        if (should_process_children)
+        {
+            for (auto& child : component.children)
+            {
+                ImVec2 next_max = draw_component_r(child, resources, id, component_debug_json, show_xray);
+
+                bblr.x = std::max(bblr.x, next_max.x);
+                bblr.y = std::max(bblr.y, next_max.y);
+            }
+        }
+    } break;
     }
     ImGui::PopID();
 
-    // If this is a view with an unsupported template, bail.
-    if (component.type == component_type_view)
+    if (show_xray)
     {
-        if (component.ref_type == component_type_unspecified) return;
-        if (component.ref_type == component_type_unknown) return;
+        ImGui::TreePop();
+
+        // Draw a bounding box around this component and its children.
+        ImGui::GetWindowDrawList()->AddRect(bbul, bblr, IM_COL32(255, 0, 0, 255)); // Red color
     }
 
-    // Process children.
-    if (!component.children.empty())
-    {
-        for (auto& child : component.children)
-        {
-            draw_component_r(child, resources, id, component_debug_json);
-        }
-    }
+    return bblr;
 }
 
 // Draws a spinner/throbber/whatchamacallit to indicate waiting for an action to complete.
@@ -233,7 +277,12 @@ auto draw_main_menu(app_context_t& app) -> void
         // View menu
         if (ImGui::BeginMenu("View"))
         {
+            if (ImGui::MenuItem("Reset layout"))
+            {
+                app.requested_events.push_back(app_event_type_t::reset_window_layout);
+            }
             ImGui::MenuItem("Show debug window", nullptr, &app.show_debug_window);
+            ImGui::MenuItem("Show XRay", nullptr, &app.show_xray);
             ImGui::MenuItem("Show Dear ImGui demo", nullptr, &app.show_demo_window);
             if (ImGui::BeginMenu("Font size"))
             {
@@ -357,9 +406,9 @@ auto draw_open_assignment_action(app_context_t& app) -> void
         ImGui::SeparatorText("Info");
         ImGui::LabelText("Name", action.name.c_str());
 
-        ImGui::SeparatorText("View");
+        ImGui::SeparatorText("UI");
         int component_id = 0;
-        draw_component_r(app.resources.components[app.root_component_key], app.resources, component_id, app.component_debug_json);
+        draw_component_r(app.resources.components[app.root_component_key], app.resources, component_id, app.component_debug_json, app.show_xray);
 
         if (ImGui::Button("Submit"))
         {
@@ -390,6 +439,14 @@ auto draw_main_window(app_context_t& app) -> void
         auto font_size = ImGui::GetFontSize();
         ImGui::SetNextWindowPos(ImVec2(main_viewport->WorkPos.x + font_size, main_viewport->WorkPos.y + font_size), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(main_viewport->WorkSize.x / 2.0f - font_size * 1.5f, main_viewport->WorkSize.y - font_size * 2.0f), ImGuiCond_FirstUseEver);
+    }
+
+    if (std::ranges::contains(app.active_events, app_event_type_t::reset_window_layout))
+    {
+        const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+        auto font_size = ImGui::GetFontSize();
+        ImGui::SetNextWindowPos(ImVec2(main_viewport->WorkPos.x + font_size, main_viewport->WorkPos.y + font_size));
+        ImGui::SetNextWindowSize(ImVec2(main_viewport->WorkSize.x / 2.0f - font_size * 1.5f, main_viewport->WorkSize.y - font_size * 2.0f));
     }
 
     ImGui::Begin("Main", nullptr, ImGuiWindowFlags_MenuBar);
@@ -522,6 +579,15 @@ auto draw_debug_window(app_context_t& app) -> void
         float next_pos_x = main_viewport->WorkSize.x / 2.0f + font_size / 2.0f;
         ImGui::SetNextWindowPos(ImVec2(next_pos_x, main_viewport->WorkPos.y + font_size), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(main_viewport->WorkSize.x - next_pos_x - font_size, main_viewport->WorkSize.y - font_size * 2.0f), ImGuiCond_FirstUseEver);
+    }
+
+    if (std::ranges::contains(app.active_events, app_event_type_t::reset_window_layout))
+    {
+        const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+        auto font_size = ImGui::GetFontSize();
+        float next_pos_x = main_viewport->WorkSize.x / 2.0f + font_size / 2.0f;
+        ImGui::SetNextWindowPos(ImVec2(next_pos_x, main_viewport->WorkPos.y + font_size));
+        ImGui::SetNextWindowSize(ImVec2(main_viewport->WorkSize.x - next_pos_x - font_size, main_viewport->WorkSize.y - font_size * 2.0f));
     }
 
     ImGui::Begin("Debug", &app.show_debug_window);
