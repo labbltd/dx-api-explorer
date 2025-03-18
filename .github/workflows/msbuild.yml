@@ -45,3 +45,16 @@ jobs:
           Cousine-Regular.ttf
           lib/OpenSSL-3.3.1/bin/*.dll
           lib/SDL2-2.30.5/lib/x64/*.dll
+
+  release:
+    needs: build
+    runs-on: "ubuntu-latest"
+    
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: my-artifact
+        
+    - name: Display structure of downloaded files
+      run: ls -R
+    
