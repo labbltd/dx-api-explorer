@@ -57,4 +57,17 @@ jobs:
         
     - name: Display structure of downloaded files
       run: ls -R
+
+    - uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: "latest"
+        title: "Latest Release"
+        files: |
+          build/x64/Release/*.exe
+          LICENSE
+          README.md
+          Cousine-Regular.ttf
+          lib/OpenSSL-3.3.1/bin/*.dll
+          lib/SDL2-2.30.5/lib/x64/*.dll
     
