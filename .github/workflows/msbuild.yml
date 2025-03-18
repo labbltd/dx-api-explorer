@@ -58,6 +58,9 @@ jobs:
       with:
         name: my-artifact
 
+    - name: Display structure of downloaded files
+      run: ls -R
+
     - name: Create flat zip archive
       run: zip -j dx_api_explorer.zip ${{env.RELEASE_FILES}}
 
