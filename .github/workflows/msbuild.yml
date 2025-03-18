@@ -39,11 +39,12 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: "marvinpinto/action-automatic-releases@latest"
+      - name: Release
+        uses: "marvinpinto/action-automatic-releases@latest"
         with:
+          working-directory: ${{env.GITHUB_WORKSPACE}}
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           automatic_release_tag: "latest"
-          prerelease: true
           title: "Latest Build"
           files: |
             build/x64/Release/*.exe
