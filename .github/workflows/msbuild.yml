@@ -18,6 +18,15 @@ env:
   # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
   BUILD_CONFIGURATION: Release
 
+  RELEASE_FILES: |
+    build/x64/Release/dx_api_explorer.exe
+    LICENSE
+    README.md
+    Cousine-Regular.ttf
+    lib/OpenSSL-3.3.1/bin/libcrypto-3-x64.dll
+    lib/OpenSSL-3.3.1/bin/libssl-3-x64.dll
+    lib/SDL2-2.30.5/lib/x64/SDL2.dll
+
 jobs:
   build:
     runs-on: windows-latest
@@ -38,13 +47,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: my-artifact
-        path: |
-          build/x64/Release/*.exe
-          LICENSE
-          README.md
-          Cousine-Regular.ttf
-          lib/OpenSSL-3.3.1/bin/*.dll
-          lib/SDL2-2.30.5/lib/x64/*.dll
+        path: ${{env.RELEASE_FILES}}
 
   release:
     needs: build
@@ -54,20 +57,14 @@ jobs:
     - uses: actions/download-artifact@v4
       with:
         name: my-artifact
-        
-    - name: Display structure of downloaded files
-      run: ls -R
+
+    - name: Create flat zip archive
+      run: zip -j dx_api_explorer.zip ${{env.RELEASE_FILES}}
 
     - uses: "marvinpinto/action-automatic-releases@latest"
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
         automatic_release_tag: "latest"
         title: "Latest Release"
-        files: |
-          build/x64/Release/*.exe
-          LICENSE
-          README.md
-          Cousine-Regular.ttf
-          lib/OpenSSL-3.3.1/bin/*.dll
-          lib/SDL2-2.30.5/lib/x64/*.dll
+        files: dx_api_explorer.zip
     
