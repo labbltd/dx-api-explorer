@@ -61,8 +61,11 @@ jobs:
     - name: Display structure of downloaded files
       run: ls -R
 
+    - name: Build manifest
+      run: echo ${{env.RELEASE_FILES}} > MANIFEST && cat MANIFEST
+
     - name: Create flat zip archive
-      run: zip -j dx_api_explorer.zip ${{env.RELEASE_FILES}}
+      run: xargs -d '\n' zip -j dx_api_explorer.zip < MANIFEST
 
     - uses: "marvinpinto/action-automatic-releases@latest"
       with:
