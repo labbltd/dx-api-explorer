@@ -29,18 +29,24 @@ function CollapsibleCard(props: { title: string, children: JSX.Element, open?: b
 }
 
 // Recursively draws debug component information.
-function Draw_component_debug_r(props: { component: component_t, component_map: component_map_t, selectedComponent: component_t | undefined, setSelected: (component: component_t) => void, id?: string }) {
+function Draw_component_debug_r(props: { component: component_t, component_map: component_map_t, selectedComponent: component_t | undefined, setSelected: (component: component_t | undefined) => void, id?: string }) {
     const { component, component_map, selectedComponent, setSelected, id = '0' } = props;
-    return <div style={{ paddingLeft: '10px', outline: selectedComponent === component ? '1px dashed blue' : 'none' }}>
-        <div className="is-clickable" onClick={() => setSelected(component)}>{component.debug_string}</div>
-        {component.is_broken && "(!)" + component.broken_string}
-        {!component.is_broken && component.type == component_type_t.component_type_reference &&
-            <Draw_component_debug_r component={component_map.get(component.key)!} component_map={component_map} selectedComponent={selectedComponent} setSelected={setSelected} id={`${id}.${0}`} />
-        }
-        {component.children?.length > 0 &&
-            component.children.map((child, idx) => <Draw_component_debug_r key={`${id}.${idx}`} component={child} component_map={component_map} selectedComponent={selectedComponent} setSelected={setSelected} id={`${id}.${idx}`} />)
-        }
-    </div>
+    if (!component) {
+        return null;
+    }
+    return <fieldset style={{ padding: '0 10px', border: component.json && JSON.parse(component.json).config?.context ? '1px dashed red' : undefined }}>
+        <legend>{component.json && JSON.parse(component.json).config?.context && JSON.parse(component.json).config?.context}</legend>
+        <div style={{ outline: selectedComponent === component ? '1px dashed blue' : 'none' }}>
+            <div className="is-clickable" onClick={() => setSelected(selectedComponent === component ? undefined : component)}>{component.json && JSON.parse(component.json).config?.visibility && JSON.parse(component.json).config?.visibility !== true ? `(${JSON.parse(component.json).config?.visibility})` : null} {component.debug_string}</div>
+            {component.is_broken && "(!)" + component.broken_string}
+            {!component.is_broken && component.type == component_type_t.component_type_reference &&
+                <Draw_component_debug_r component={component_map.get(component.key)!} component_map={component_map} selectedComponent={selectedComponent} setSelected={setSelected} id={`${id}.${0}`} />
+            }
+            {component.children?.length > 0 &&
+                component.children.map((child, idx) => <Draw_component_debug_r key={`${id}.${idx}`} component={child} component_map={component_map} selectedComponent={selectedComponent} setSelected={setSelected} id={`${id}.${idx}`} />)
+            }
+        </div>
+    </fieldset>
 }
 
 function to_input_type(type: component_type_t) {
@@ -63,10 +69,35 @@ function update_field(e: ChangeEvent, component: component_t, app: app_context_t
     setApp({ ...app })
 }
 
+function is_visible(app: app_context_t, component: component_t) {
+    const visibility = JSON.parse(component.json)?.config?.visibility;
+    if (typeof visibility === 'boolean') {
+        return visibility;
+    }
+    if (typeof visibility === 'string') {
+        if (visibility.startsWith('@W')) {
+            const when = app.case_info.content.get('summary_of_when_conditions__');
+            return when[visibility.replace('@W ', '')];
+        }
+        if (visibility.startsWith('@E')) {
+            let expression = visibility.replace('@E ', '');
+            while (expression.indexOf('\.') > -1) {
+                const startIdx = expression.indexOf('\.');
+                const endIdx = expression.indexOf(' ', startIdx);
+                const name = expression.substring(startIdx + 1, endIdx);
+                const value = app.case_info.content.get(name) || '';
+                expression = expression.replace(`.${name}`, `'${value}'`);
+            }
+            return eval(expression);
+        }
+    }
+    return true;
+}
+
 // Recursively draws components.
 function Draw_component_r(props: { component: component_t, app: app_context_t, setApp: Function, id: number }) {
     const { component, app, setApp, id } = props;
-    if (!component) {
+    if (!component || !is_visible(app, component)) {
         return null;
     }
     return <div>
@@ -105,15 +136,15 @@ function Draw_component_r(props: { component: component_t, app: app_context_t, s
                                 component.type === component_type_t.component_type_date ||
                                 component.type === component_type_t.component_type_integer
                             ) && <input className="input" type={to_input_type(component.type)}
-                                value={app.resources.fields.get(component.key)!.data}
+                                value={app.resources.fields.get(component.key)?.data}
                                 onChange={e => update_field(e, component, app, setApp)} />
                         }
                         {
                             component.type === component_type_t.component_type_dropdown &&
                             <div className="select">
-                                <select onChange={e => update_field(e, component, app, setApp)} defaultValue={app.resources.fields.get(component.key)!.data}>
+                                <select onChange={e => update_field(e, component, app, setApp)} defaultValue={app.resources.fields.get(component.key)?.data}>
                                     {!component.is_required && <option value=""></option>}
-                                    {component.children.map(child => <option key={child.key} value={child.key}>
+                                    {component.options?.map(child => <option key={child.key} value={child.key}>
                                         {child.label}
                                     </option>)}
                                 </select>
@@ -122,7 +153,7 @@ function Draw_component_r(props: { component: component_t, app: app_context_t, s
                         {
                             component.type === component_type_t.component_type_radio &&
                             <div className="radios">
-                                {component.children.map(child => <label key={child.key} className="radio">
+                                {component.options?.map(child => <label key={child.key} className="radio">
                                     <input type="radio" name={component.name}
                                         onChange={e => update_field(e, component, app, setApp)} />
                                     {child.label}
@@ -133,7 +164,7 @@ function Draw_component_r(props: { component: component_t, app: app_context_t, s
                 </div>
                 : <>
                     <dt>{component.label}</dt>
-                    <dd>{app.resources.fields.get(component.key)!.data}</dd>
+                    <dd>{app.resources.fields.get(component.key)?.data}</dd>
                 </>)
         }
         {
@@ -426,7 +457,7 @@ function Draw_debug_calls(props: { app: app_context_t }) {
 
 // Draws a tree view of components in use starting with root.
 function Draw_debug_components(props: { app: app_context_t }) {
-    const [selected, setSelected] = useState<component_t>();
+    const [selected, setSelected] = useState<component_t | undefined>();
     const { app } = props;
     return <div className="columns">
         <pre className="column">
@@ -451,8 +482,8 @@ function Draw_debug_fields(props: { app: app_context_t }) {
                 <tr><th>Key</th><th>Label</th><th>Type</th><th>Display As</th></tr>
             </thead>
             <tbody>
-                {Array.from(app.resources.fields.keys()).map(f => <tr key={f} onClick={() => setSelected(f)} className="is-clickable">
-                    <td>{f.replace(app.resources.fields.get(f)!.class_id, '')}</td>
+                {Array.from(app.resources.fields.keys()).sort().map(f => <tr key={f} onClick={() => setSelected(f)} className="is-clickable">
+                    <td>{f}</td>
                     <td>{JSON.parse(app.resources.fields.get(f)!.json).label}</td>
                     <td>{JSON.parse(app.resources.fields.get(f)!.json).type}</td>
                     <td>{JSON.parse(app.resources.fields.get(f)!.json).displayAs}</td>
@@ -502,9 +533,13 @@ export function Draw_clipboard(props: { app: app_context_t, setApp: Function, se
             <textarea className="textarea" rows={20} ref={clipboardRef}></textarea>
         </div>
         <button type="button" className="button" onClick={() => {
-            parse_dx_response(app, clipboardRef.current?.value!);
-            app.dx_request_queue = [];
-            setTab('Main');
+            try {
+                parse_dx_response(app, clipboardRef.current?.value!);
+                app.dx_request_queue = [];
+                setTab('Main');
+            } catch (e) {
+                app.flash = (e as any).toString();
+            }
             setApp({ ...app });
         }}>Analyze</button>
     </div>
@@ -585,7 +620,7 @@ export function Draw_tabbed_window(props: { app: app_context_t, setApp: Function
                 </ul>
             </div>
             <div key={app.status}>
-                {tabs.find(tab => tab.title === activeTab)!.page}
+                {tabs.find(tab => tab.title === activeTab)?.page}
             </div>
         </div>
     </div>

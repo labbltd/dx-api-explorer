@@ -98,6 +98,7 @@ export class component_t {
     ref_type = component_type_t.component_type_unspecified; // Referenced component / type of template.
     children = new Array<component_t>();
     instructions!: string;
+    options?: component_t[];
 };
 
 export type component_map_t = Map<string, component_t>;

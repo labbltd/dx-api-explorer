@@ -22,8 +22,8 @@ function to_string(type: component_type_t, name: string, ref_type?: component_ty
 export function is_editable(component: component_t, field: field_t): boolean {
     if (component.is_readonly) return false;
     if (component.is_disabled) return false;
-    if (field.is_special) return false;
-    if (field.is_class_key) return false;
+    if (field?.is_special) return false;
+    if (field?.is_class_key) return false;
 
     return true;
 }
@@ -180,13 +180,16 @@ function resolve_instructions(instructions: string, paragraphs: Map<string, para
     return instructions;
 }
 
+function resolve_content(content: Map<string, any>, context: string): any {
+    return context.split('\.').reduce((obj, c) => obj.has(c) ? obj.get(c) : obj, content);
+}
 
 // Recursively makes component and its children from DX API JSON response data.
-function make_component_r(component_json: any, app: app_context_t, parent_class_id: string = ""): component_t {
+function make_component_r(component_json: any, app: app_context_t, parent_class_id: string = "", parent_context: string = ""): component_t {
     const new_component = new component_t();
     new_component.json = JSON.stringify(component_json, null, json_indent);
     new_component.type = to_component_type(component_json["type"]);
-
+    let fullContext = parent_context;
     switch (new_component.type) {
         case component_type_t.component_type_unknown:
             {
@@ -212,7 +215,9 @@ function make_component_r(component_json: any, app: app_context_t, parent_class_
                 if (config_json["context"]) {
                     const context = config_json["context"];
 
-                    if (context.substr(0, 6) == "@CLASS") {
+                    if (config_json["ruleClass"]) {
+                        new_component.class_id = config_json["ruleClass"];
+                    } else if (context.substr(0, 6) == "@CLASS") {
                         // @CLASS The-Class-Name
                         // 0123456789...
                         //        ^
@@ -221,10 +226,15 @@ function make_component_r(component_json: any, app: app_context_t, parent_class_
                     } else if (context.substring(0, 2) === '@P') {
                         // @P .Property-Name
                         // 012345...
-                        new_component.class_id = app.case_info.content.get(context.substring(4)).classID || parent_class_id;
-                    } else if (app.case_info.content.has(context.substring(1))) {
+                        let c = context.substring(3);
+                        fullContext += c;
+                        const resolvedObject = resolve_content(app.case_info.content, fullContext);
+                        new_component.class_id = resolvedObject.classID || parent_class_id;
+                    } else if (context.substring(0, 1) === '.') {
                         // .Property-Name
-                        new_component.class_id = app.case_info.content.get(context.substring(1)).classID;
+                        fullContext += context;
+                        const resolvedObject = resolve_content(app.case_info.content, fullContext);
+                        new_component.class_id = resolvedObject.classID || parent_class_id;
                     } else {
                         new_component.is_broken = true;
                         new_component.broken_string = `Unsupported context: ${context}`;
@@ -290,7 +300,7 @@ function make_component_r(component_json: any, app: app_context_t, parent_class_
                 if (config_json["readOnly"]) new_component.is_readonly = to_bool(config_json["readOnly"]);
                 if (config_json["required"]) new_component.is_required = to_bool(config_json["required"]);
 
-                if (config_json["datasource"]) new_component.children = resolve_datasource(config_json["datasource"], app.resources.fields, parent_class_id);
+                if (config_json["datasource"]) new_component.options = resolve_datasource(config_json["datasource"], app.resources.fields, parent_class_id);
 
                 // Always last:
                 new_component.debug_string = to_string(new_component.type, new_component.label);
@@ -311,7 +321,7 @@ function make_component_r(component_json: any, app: app_context_t, parent_class_
     if (component_json["children"]) {
         for (const child of component_json["children"]) {
             //component_t new_child_component = make_component_r(child, app, parent_class_id);
-            const new_child_component = make_component_r(child, app, new_component.class_id);
+            const new_child_component = make_component_r(child, app, new_component.class_id, fullContext);
             new_component.children.push(new_child_component);
         }
     }
@@ -460,6 +470,18 @@ export function parse_dx_response(app: app_context_t, response_body: string): vo
         {
             app.action_buttons = ui_resources_json["actionButtons"];
 
+        }
+
+        {
+            const info = ui_resources_json["context_data"]?.["caseInfo"]
+            if (info) {
+                for (const content of Object.keys(info["content"])) {
+                    const k = content;
+                    const content_value = info["content"][k];
+
+                    app.case_info.content.set(k, content_value);
+                }
+            }
         }
     } // End of UI resources parsing.
 }
