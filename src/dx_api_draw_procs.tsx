@@ -77,6 +77,9 @@ function is_visible(app: app_context_t, component: component_t) {
     if (typeof visibility === 'string') {
         if (visibility.startsWith('@W')) {
             const when = app.case_info.content.get('summary_of_when_conditions__');
+            if (!when) {
+                return true;
+            }
             return when[visibility.replace('@W ', '')];
         }
         if (visibility.startsWith('@E')) {
@@ -254,7 +257,7 @@ function Draw_login_form(props: { app: app_context_t, setApp: Function }) {
             {app.oauth2.grant_type === 'authCode' && <OAuthField field="authorization_endpoint" app={app} setApp={setApp} />}
             <OAuthField field="token_endpoint" app={app} setApp={setApp} />
             <OAuthField field="user_id" app={app} setApp={setApp} />
-            {(app.oauth2.grant_type === 'authCode' || app.oauth2.grant_type === 'clientCreds') && <OAuthField field="password" app={app} setApp={setApp} type="password" />}
+            {['authCode', 'clientCreds', 'passwordCreds'].includes(app.oauth2.grant_type) && <OAuthField field="password" app={app} setApp={setApp} type="password" />}
             {app.oauth2.grant_type === 'authCode' && <OAuthField field="auth_service" app={app} setApp={setApp} />}
             {app.oauth2.grant_type === 'authCode' && <OAuthField field="no_pkce" app={app} setApp={setApp} />}
             {app.oauth2.grant_type === 'authCode' && <OAuthField field="redirect_uri" app={app} setApp={setApp} />}
